@@ -207,6 +207,121 @@ curl -v https://cdn.yourdomain.com/xhttp
 
 ---
 
+## Сгенерированные конфиги
+
+Скрипт автоматически создаёт эти файлы на основе введённых параметров. Приведены для справки.
+
+### Caddyfile — `/etc/caddy/Caddyfile`
+
+```
+node.yourdomain.com {
+    handle /xhttp/* {
+        header {
+            Cache-Control "private, proxy-revalidate, no-store, no-cache, must-revalidate, max-age=0"
+            Accept "application/vnd.api+json, application/json, text/plain, */*"
+            Pragma "no-cache"
+            Accept-Language "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7"
+        }
+        reverse_proxy 127.0.0.1:10085 {
+            flush_interval -1
+        }
+    }
+    handle {
+        root * /var/www/html
+        file_server
+    }
+}
+```
+
+Caddy автоматически выпускает и обновляет TLS-сертификат Let's Encrypt для `node.yourdomain.com`. Весь трафик на `/xhttp/*` реверс-проксируется в Xray на localhost — снаружи недоступно. Всё остальное отдаёт статическую страницу-заглушку.
+
+### Конфиг Xray — `/usr/local/etc/xray/config.json`
+
+```json
+{
+  "log": { "loglevel": "warning" },
+  "dns": {
+    "servers": [
+      "https://1.1.1.1/dns-query",
+      "https://8.8.8.8/dns-query"
+    ]
+  },
+  "inbounds": [
+    {
+      "tag": "xhttp-cdn",
+      "port": 10085,
+      "listen": "127.0.0.1",
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          { "id": "<UUID>", "email": "<имя_пользователя>", "flow": "" }
+        ],
+        "decryption": "none"
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": ["http", "tls", "quic"]
+      },
+      "streamSettings": {
+        "network": "xhttp",
+        "security": "none",
+        "xhttpSettings": {
+          "mode": "packet-up",
+          "path": "/xhttp",
+          "extra": {
+            "path": "/xhttp",
+            "xmux": {
+              "cMaxLifetimeMs": 0,
+              "cMaxReuseTimes": 0,
+              "maxConcurrency": "16-32",
+              "maxConnections": 0
+            },
+            "seqKey": "page",
+            "sessionKey": "X-Auth-Token",
+            "xPaddingKey": "_dc",
+            "seqPlacement": "query",
+            "xPaddingHeader": "X-Cache",
+            "xPaddingMethod": "tokenish",
+            "sessionPlacement": "header",
+            "uplinkHTTPMethod": "GET",
+            "xPaddingObfsMode": true,
+            "xPaddingPlacement": "header"
+          },
+          "channels": 4,
+          "uploadPath": "/xhttp/up",
+          "noSSEHeader": false,
+          "downloadPath": "/xhttp/dl",
+          "scavengeWindow": 10
+        }
+      }
+    }
+  ],
+  "outbounds": [
+    { "tag": "DIRECT", "protocol": "freedom" },
+    { "tag": "BLOCK",  "protocol": "blackhole" }
+  ],
+  "routing": {
+    "rules": [
+      {
+        "ip": ["geoip:private"],
+        "type": "field",
+        "outboundTag": "BLOCK"
+      }
+    ],
+    "domainStrategy": "IPIfNonMatch"
+  }
+}
+```
+
+Ключевые моменты:
+- Xray слушает только **127.0.0.1:10085** — снаружи недоступен
+- Транспорт: **XHTTP** в режиме `packet-up` — выглядит как обычный HTTP-обмен с API для CDN
+- Параметры `xPadding*` добавляют рандомизированные заголовки для усложнения фингерпринтинга
+- `xmux` мультиплексирует потоки внутри одного соединения с рандомным concurrency 16–32
+- UUID и email (имя пользователя) добавляются автоматически при создании юзеров через `xcdn`
+
+---
+
 ## Поддерживаемые CDN
 
 - **Timeweb CDN** — [timeweb.com](https://timeweb.com)

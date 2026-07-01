@@ -207,6 +207,121 @@ If all 4 commands respond — connect your client.
 
 ---
 
+## Generated configs
+
+The script auto-generates these files based on your input. Shown here for reference.
+
+### Caddyfile — `/etc/caddy/Caddyfile`
+
+```
+node.yourdomain.com {
+    handle /xhttp/* {
+        header {
+            Cache-Control "private, proxy-revalidate, no-store, no-cache, must-revalidate, max-age=0"
+            Accept "application/vnd.api+json, application/json, text/plain, */*"
+            Pragma "no-cache"
+            Accept-Language "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7"
+        }
+        reverse_proxy 127.0.0.1:10085 {
+            flush_interval -1
+        }
+    }
+    handle {
+        root * /var/www/html
+        file_server
+    }
+}
+```
+
+Caddy automatically issues and renews a Let's Encrypt TLS certificate for `node.yourdomain.com`. All traffic on `/xhttp/*` is reverse-proxied to Xray on localhost — never exposed to the outside. Everything else serves a static placeholder page.
+
+### Xray config — `/usr/local/etc/xray/config.json`
+
+```json
+{
+  "log": { "loglevel": "warning" },
+  "dns": {
+    "servers": [
+      "https://1.1.1.1/dns-query",
+      "https://8.8.8.8/dns-query"
+    ]
+  },
+  "inbounds": [
+    {
+      "tag": "xhttp-cdn",
+      "port": 10085,
+      "listen": "127.0.0.1",
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          { "id": "<UUID>", "email": "<username>", "flow": "" }
+        ],
+        "decryption": "none"
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": ["http", "tls", "quic"]
+      },
+      "streamSettings": {
+        "network": "xhttp",
+        "security": "none",
+        "xhttpSettings": {
+          "mode": "packet-up",
+          "path": "/xhttp",
+          "extra": {
+            "path": "/xhttp",
+            "xmux": {
+              "cMaxLifetimeMs": 0,
+              "cMaxReuseTimes": 0,
+              "maxConcurrency": "16-32",
+              "maxConnections": 0
+            },
+            "seqKey": "page",
+            "sessionKey": "X-Auth-Token",
+            "xPaddingKey": "_dc",
+            "seqPlacement": "query",
+            "xPaddingHeader": "X-Cache",
+            "xPaddingMethod": "tokenish",
+            "sessionPlacement": "header",
+            "uplinkHTTPMethod": "GET",
+            "xPaddingObfsMode": true,
+            "xPaddingPlacement": "header"
+          },
+          "channels": 4,
+          "uploadPath": "/xhttp/up",
+          "noSSEHeader": false,
+          "downloadPath": "/xhttp/dl",
+          "scavengeWindow": 10
+        }
+      }
+    }
+  ],
+  "outbounds": [
+    { "tag": "DIRECT", "protocol": "freedom" },
+    { "tag": "BLOCK",  "protocol": "blackhole" }
+  ],
+  "routing": {
+    "rules": [
+      {
+        "ip": ["geoip:private"],
+        "type": "field",
+        "outboundTag": "BLOCK"
+      }
+    ],
+    "domainStrategy": "IPIfNonMatch"
+  }
+}
+```
+
+Key points:
+- Xray listens on **127.0.0.1:10085 only** — never reachable from outside
+- Transport: **XHTTP** with `packet-up` mode — looks like regular HTTP API traffic to the CDN
+- `xPadding*` parameters add randomised padding headers to make traffic harder to fingerprint
+- `xmux` multiplexes streams inside a single connection with a random concurrency of 16–32
+- UUID and email (username) are added automatically when you create users via `xcdn`
+
+---
+
 ## Supported CDN
 
 - **Timeweb CDN** — [timeweb.com](https://timeweb.com)
