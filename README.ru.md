@@ -81,13 +81,13 @@ Pragma: no-cache
 ## Быстрый старт
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/gkzgtzfv49-spec/Cdn-Whitelist/main/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/SpecFlowdev/Cdn-Whitelist/main/install.sh)
 ```
 
 Или вручную:
 
 ```bash
-git clone https://github.com/gkzgtzfv49-spec/Cdn-Whitelist.git
+git clone https://github.com/SpecFlowdev/Cdn-Whitelist.git
 cd Cdn-Whitelist
 chmod +x install.sh
 sudo bash install.sh
